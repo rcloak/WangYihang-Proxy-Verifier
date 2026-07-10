@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/WangYihang/Proxy-Verifier/internal"
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
 	"github.com/WangYihang/Proxy-Verifier/internal/protocol"
 	"github.com/WangYihang/Proxy-Verifier/internal/util"
 	logger "github.com/sirupsen/logrus"
 )
 
-func Loader(inputFilepath string, taskQueue chan *model.Task, numWorkers int) {
+func Loader(taskQueue chan *model.Task, opts *model.MainOptions, state *model.State) {
+	inputFilepath := opts.InputFilepath
+	numWorkers := opts.NumWorkers
 	var index int
 
 	defer func() {
@@ -56,11 +57,12 @@ func Loader(inputFilepath string, taskQueue chan *model.Task, numWorkers int) {
 		// Parse record
 		proxyProtocol, proxyHost, proxyPort := ParseRecordFunc(record)
 
-		targetProtocol := internal.Options.TargetUrlObject.Scheme
+		targetProtocol := opts.TargetUrlObject.Scheme
 		proxyProtocol2SubProxyProtocol2Handler := protocol.TargetProtocl2ProxyProtocol2SubProxyProtocol2Handler[targetProtocol]
 		for _, handler := range proxyProtocol2SubProxyProtocol2Handler[proxyProtocol] {
-			task := model.NewTask(index, internal.Options.MeasurementId, proxyProtocol, proxyHost, proxyPort, internal.Options.TargetUrl, internal.Options.Timeout, handler)
-			ScheduleTask(&task, taskQueue)
+			task := model.NewTask(index, opts.MeasurementId, proxyProtocol, proxyHost, proxyPort, opts.TargetUrl, opts.Timeout, handler)
+			task.Secret = opts.Secret
+			ScheduleTask(&task, taskQueue, state)
 		}
 	}
 }

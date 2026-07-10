@@ -83,7 +83,7 @@ func HttpViaHttpTunnel(task *model.Task) (result model.Result) {
 
 	// Send the verification request directly over the established tunnel.
 	newUrl := util.BuildUrl(task.TargetUri, task.TaskId, task.ProxyProtocol, task.ProxyHost, task.ProxyPort)
-	if err := util.SendVerificationHTTPRequestViaConn(conn, newUrl, timeoutDuration, &result); err != nil {
+	if err := util.SendVerificationHTTPRequestViaConn(conn, newUrl, timeoutDuration, task.Secret, &result); err != nil {
 		result.Error = err.Error()
 	}
 	return result

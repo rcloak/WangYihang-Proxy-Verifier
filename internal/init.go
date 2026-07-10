@@ -10,31 +10,34 @@ import (
 	logger "github.com/sirupsen/logrus"
 )
 
-var State *model.State
-var Options *model.MainOptions
-
-func Init() {
-	Options = &model.MainOptions{}
+// Init parses the command-line options and builds the shared runtime state.
+// It returns them so the composition root (cmd/verifier) can pass them
+// explicitly through the pipeline instead of relying on package-level globals.
+func Init() (*model.MainOptions, *model.State) {
+	options := &model.MainOptions{}
 	// Parse options
-	_, err := flags.ParseArgs(Options, os.Args)
+	_, err := flags.ParseArgs(options, os.Args)
 	if err != nil {
 		os.Exit(1)
 	}
 
-	if Options.MeasurementId == "" {
-		Options.MeasurementId = uuid.New().String()
+	if options.MeasurementId == "" {
+		options.MeasurementId = uuid.New().String()
 	}
 
 	// Validate options
-	Options.TargetUrlObject, err = url.ParseRequestURI(Options.TargetUrl)
+	options.TargetUrlObject, err = url.ParseRequestURI(options.TargetUrl)
 	if err != nil {
 		os.Exit(1)
 	}
 
-	// Create state
-	State = model.NewState(Options.MonitorInterval)
 	// Setup logger
 	logger.SetFormatter(&logger.TextFormatter{
 		FullTimestamp: true,
 	})
+
+	// Create state
+	state := model.NewState(options.MonitorInterval)
+
+	return options, state
 }

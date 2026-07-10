@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/WangYihang/Proxy-Verifier/internal"
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
 	logger "github.com/sirupsen/logrus"
 )
 
-func Saver(resultQueue chan *model.Result, numWorkers int) {
+func Saver(resultQueue chan *model.Result, numWorkers int, outputFile string, state *model.State) {
 	var numFinishedWorkers int = 0
 
-	outputFile, err := os.OpenFile(internal.Options.OutputFile, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	output, err := os.OpenFile(outputFile, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		logger.Error(err)
 	}
@@ -31,7 +30,7 @@ func Saver(resultQueue chan *model.Result, numWorkers int) {
 			continue
 		}
 
-		internal.State.TaskDone(result.Error == "")
+		state.TaskDone(result.Error == "")
 		if result.Error == "" {
 			fmt.Printf("%-96s\n", result.String())
 		} else {
@@ -43,16 +42,16 @@ func Saver(resultQueue chan *model.Result, numWorkers int) {
 		if err != nil {
 			logger.Error(err)
 		}
-		_, err = outputFile.WriteString(fmt.Sprintf("%s\n", resultString))
+		_, err = output.WriteString(fmt.Sprintf("%s\n", resultString))
 		if err != nil {
 			logger.Error(err)
 		}
 
 		// Flush to disk
-		err = outputFile.Sync()
+		err = output.Sync()
 		if err != nil {
 			logger.Error(err)
 		}
 	}
-	outputFile.Close()
+	output.Close()
 }

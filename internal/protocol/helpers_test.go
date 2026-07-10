@@ -21,8 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WangYihang/Proxy-Verifier/internal"
-	"github.com/WangYihang/Proxy-Verifier/internal/model"
 	"github.com/WangYihang/Proxy-Verifier/internal/util"
 )
 
@@ -30,13 +28,10 @@ const integrationSecret = "integration-secret"
 
 var testTLSCert tls.Certificate
 
-// TestMain sets the shared secret the handlers rely on and installs a
-// self-signed certificate as a trusted root so that the (certificate-verifying)
-// HTTPS proxy handler can talk to our in-process TLS proxies.
+// TestMain installs a self-signed certificate as a trusted root so that the
+// (certificate-verifying) HTTPS proxy handler can talk to our in-process TLS
+// proxies.
 func TestMain(m *testing.M) {
-	internal.Options = &model.MainOptions{}
-	internal.Options.Secret = integrationSecret
-
 	cert, certPEM := mustGenerateCert()
 	testTLSCert = cert
 
@@ -106,7 +101,7 @@ func startEchoServer(t *testing.T) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		challenge := r.URL.Query().Get("challenge")
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"response": util.HandleChallenge(challenge),
+			"response": util.HandleChallenge(challenge, integrationSecret),
 		})
 	}))
 	// Close connections after each response so the proxies' pipes drain cleanly.

@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WangYihang/Proxy-Verifier/internal"
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
 	"github.com/WangYihang/Proxy-Verifier/internal/util"
 )
@@ -41,15 +40,12 @@ func serveOneEchoResponse(conn net.Conn) {
 }
 
 func TestSendVerificationHTTPRequestViaConnSuccess(t *testing.T) {
-	internal.Options = &model.MainOptions{}
-	internal.Options.Secret = testSecret
-
 	client, server := net.Pipe()
 	go serveOneEchoResponse(server)
 
 	result := &model.Result{}
 	url := "http://127.0.0.1/proxy-verifier.php?challenge=deadbeef"
-	if err := util.SendVerificationHTTPRequestViaConn(client, url, 5*time.Second, result); err != nil {
+	if err := util.SendVerificationHTTPRequestViaConn(client, url, 5*time.Second, testSecret, result); err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
 	if result.RawProxyOriginRequest == "" {
@@ -61,9 +57,6 @@ func TestSendVerificationHTTPRequestViaConnSuccess(t *testing.T) {
 }
 
 func TestSendVerificationHTTPRequestViaConnTampered(t *testing.T) {
-	internal.Options = &model.MainOptions{}
-	internal.Options.Secret = testSecret
-
 	client, server := net.Pipe()
 	go func() {
 		defer server.Close()
@@ -77,7 +70,7 @@ func TestSendVerificationHTTPRequestViaConnTampered(t *testing.T) {
 
 	result := &model.Result{}
 	url := "http://127.0.0.1/proxy-verifier.php?challenge=deadbeef"
-	err := util.SendVerificationHTTPRequestViaConn(client, url, 5*time.Second, result)
+	err := util.SendVerificationHTTPRequestViaConn(client, url, 5*time.Second, testSecret, result)
 	if err == nil {
 		t.Fatalf("expected an integrity verification failure, got nil")
 	}

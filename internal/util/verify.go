@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/WangYihang/Proxy-Verifier/internal"
 	"github.com/WangYihang/Proxy-Verifier/internal/config"
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
 	"github.com/google/uuid"
@@ -43,19 +42,18 @@ func ExtractChallengeFromUrl(urlString string) string {
 	return urlObject.Query().Get(config.ChallengeParamName)
 }
 
-func HandleChallenge(challenge string) string {
-	var secret = internal.Options.Secret
+func HandleChallenge(challenge string, secret string) string {
 	hash := md5.Sum([]byte(challenge + secret))
 	answer := hex.EncodeToString(hash[:])
 	return answer
 }
 
-func VerifyChallenge(challenge string, answer string) bool {
-	expectedAnswer := HandleChallenge(challenge)
+func VerifyChallenge(challenge string, answer string, secret string) bool {
+	expectedAnswer := HandleChallenge(challenge, secret)
 	return expectedAnswer == answer
 }
 
-func VerifyIntegrity(responseBody []byte, challenge string) bool {
+func VerifyIntegrity(responseBody []byte, challenge string, secret string) bool {
 	type EchoServerResponse struct {
 		BackendAddress string              `json:"backend_address"`
 		RequestUri     string              `json:"request_uri"`
@@ -69,10 +67,10 @@ func VerifyIntegrity(responseBody []byte, challenge string) bool {
 	if err != nil {
 		return false
 	}
-	return VerifyChallenge(challenge, echoServerResponse.Response)
+	return VerifyChallenge(challenge, echoServerResponse.Response, secret)
 }
 
-func SendVerificationHttpRequest(client *http.Client, url string, result *model.Result) error {
+func SendVerificationHttpRequest(client *http.Client, url string, secret string, result *model.Result) error {
 	// Create request
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -104,7 +102,7 @@ func SendVerificationHttpRequest(client *http.Client, url string, result *model.
 
 	// Verify integrity
 	challenge := ExtractChallengeFromUrl(url)
-	if !VerifyIntegrity(rawBody, challenge) {
+	if !VerifyIntegrity(rawBody, challenge, secret) {
 		return fmt.Errorf("integrity verification failed")
 	}
 
@@ -121,7 +119,7 @@ func SendVerificationHttpRequest(client *http.Client, url string, result *model.
 // response on the connection exactly once. That avoids the transport re-dialing
 // and reusing a single-use connection, which could otherwise turn a working
 // proxy into a false negative.
-func SendVerificationHTTPRequestViaConn(conn net.Conn, url string, timeout time.Duration, result *model.Result) error {
+func SendVerificationHTTPRequestViaConn(conn net.Conn, url string, timeout time.Duration, secret string, result *model.Result) error {
 	defer conn.Close()
 
 	// Create request
@@ -163,7 +161,7 @@ func SendVerificationHTTPRequestViaConn(conn net.Conn, url string, timeout time.
 
 	// Verify integrity
 	challenge := ExtractChallengeFromUrl(url)
-	if !VerifyIntegrity(rawBody, challenge) {
+	if !VerifyIntegrity(rawBody, challenge, secret) {
 		return fmt.Errorf("integrity verification failed")
 	}
 

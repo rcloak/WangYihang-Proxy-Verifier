@@ -24,7 +24,7 @@ func HttpViaSocksTunnel(task *model.Task) (result model.Result) {
 
 	// Send request
 	newUrl := util.BuildUrl(task.TargetUri, task.TaskId, task.ProxyProtocol, task.ProxyHost, task.ProxyPort)
-	err := util.SendVerificationHttpRequest(client, newUrl, &result)
+	err := util.SendVerificationHttpRequest(client, newUrl, task.Secret, &result)
 	if err != nil {
 		result.Error = err.Error()
 		return

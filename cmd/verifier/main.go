@@ -8,29 +8,29 @@ import (
 )
 
 func main() {
-	internal.Init()
+	options, state := internal.Init()
 
 	// Create task queue and result queue
-	var taskQueue = make(chan *model.Task, internal.Options.NumWorkers)
+	var taskQueue = make(chan *model.Task, options.NumWorkers)
 	var resultQueue = make(chan *model.Result)
 
 	// Start loader
 	logger.Info("Starting loader...")
-	go processer.Loader(internal.Options.InputFilepath, taskQueue, internal.Options.NumWorkers)
+	go processer.Loader(taskQueue, options, state)
 
 	// Start workers
-	logger.Infof("Starting %d workers...", internal.Options.NumWorkers)
-	for i := 0; i < internal.Options.NumWorkers; i++ {
+	logger.Infof("Starting %d workers...", options.NumWorkers)
+	for i := 0; i < options.NumWorkers; i++ {
 		go processer.Worker(taskQueue, resultQueue)
 	}
 
 	// Start monitor
-	go processer.Monitor()
+	go processer.Monitor(options.MonitorInterval, state)
 
 	// Start saver
 	logger.Info("Starting saver...")
-	processer.Saver(resultQueue, internal.Options.NumWorkers)
+	processer.Saver(resultQueue, options.NumWorkers, options.OutputFile, state)
 
 	// Print statistics
-	internal.State.Snapshot()
+	state.Snapshot()
 }

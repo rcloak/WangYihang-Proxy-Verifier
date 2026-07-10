@@ -12,6 +12,7 @@ import (
 func runHandler(t *testing.T, protocolName, host string, port uint16, targetURL string, handler func(*model.Task) model.Result) {
 	t.Helper()
 	task := model.NewTask(0, "integration", protocolName, host, port, targetURL, 8, handler)
+	task.Secret = integrationSecret
 	result := handler(&task)
 	if result.Error != "" {
 		t.Fatalf("handler returned error: %s", result.Error)

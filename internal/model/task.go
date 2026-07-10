@@ -23,6 +23,7 @@ type Task struct {
 	ProxyUri      string                           `json:"proxy_uri"`
 	Timeout       int                              `json:"timeout"`
 	TargetUri     string                           `json:"target_uri"`
+	Secret        string                           `json:"-"`
 	ProcessFunc   func(task *Task) (result Result) `json:"-"`
 }
 

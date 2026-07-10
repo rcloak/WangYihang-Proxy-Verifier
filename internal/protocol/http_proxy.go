@@ -25,7 +25,7 @@ func HttpViaHttpProxy(task *model.Task) (result model.Result) {
 
 	// Send request
 	cacheBypassingUrl := util.BuildUrl(task.TargetUri, task.TaskId, task.ProxyProtocol, task.ProxyHost, task.ProxyPort)
-	err := util.SendVerificationHttpRequest(client, cacheBypassingUrl, &result)
+	err := util.SendVerificationHttpRequest(client, cacheBypassingUrl, task.Secret, &result)
 	if err != nil {
 		result.Error = err.Error()
 		return

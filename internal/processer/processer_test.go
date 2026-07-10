@@ -8,40 +8,42 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/WangYihang/Proxy-Verifier/internal"
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
 	"github.com/WangYihang/Proxy-Verifier/internal/processer"
 )
 
-func setupOptions(t *testing.T, targetURL, outputFile string) {
+func newOptions(t *testing.T, targetURL, inputFile, outputFile string, numWorkers int) *model.MainOptions {
 	t.Helper()
 	obj, err := url.ParseRequestURI(targetURL)
 	if err != nil {
 		t.Fatalf("bad target url: %v", err)
 	}
-	internal.Options = &model.MainOptions{
+	opts := &model.MainOptions{
+		InputFilepath:   inputFile,
+		OutputFile:      outputFile,
 		TargetUrl:       targetURL,
 		TargetUrlObject: obj,
 		MeasurementId:   "test-measurement",
 		Timeout:         8,
-		OutputFile:      outputFile,
+		NumWorkers:      numWorkers,
 	}
-	internal.State = model.NewState(1)
+	opts.Secret = "test-secret"
+	return opts
 }
 
 func TestScheduleTask(t *testing.T) {
-	internal.State = model.NewState(1)
+	state := model.NewState(1)
 	queue := make(chan *model.Task, 1)
 	task := model.NewTask(0, "m", "http", "1.2.3.4", 80, "http://e/", 1, nil)
 
-	processer.ScheduleTask(&task, queue)
+	processer.ScheduleTask(&task, queue, state)
 
 	got := <-queue
 	if got.ProxyHost != "1.2.3.4" {
 		t.Errorf("scheduled task host = %q, want 1.2.3.4", got.ProxyHost)
 	}
-	if internal.State.NumScheduledTasks != 1 {
-		t.Errorf("NumScheduledTasks = %d, want 1", internal.State.NumScheduledTasks)
+	if state.NumScheduledTasks != 1 {
+		t.Errorf("NumScheduledTasks = %d, want 1", state.NumScheduledTasks)
 	}
 }
 
@@ -83,11 +85,12 @@ func TestLoaderCreatesTasksFromCsv(t *testing.T) {
 	if err := os.WriteFile(input, []byte("http,1.2.3.4,8080\nsocks5,9.9.9.9,1080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	setupOptions(t, "http://echo.example/", filepath.Join(dir, "out.log"))
-
 	const numWorkers = 2
+	opts := newOptions(t, "http://echo.example/", input, filepath.Join(dir, "out.log"), numWorkers)
+	state := model.NewState(1)
+
 	taskQueue := make(chan *model.Task, 64)
-	go processer.Loader(input, taskQueue, numWorkers)
+	go processer.Loader(taskQueue, opts, state)
 
 	var tasks []*model.Task
 	sentinels := 0
@@ -111,6 +114,9 @@ func TestLoaderCreatesTasksFromCsv(t *testing.T) {
 		if task.ProcessFunc == nil {
 			t.Errorf("task for %s has no ProcessFunc", task.ProxyProtocol)
 		}
+		if task.Secret != "test-secret" {
+			t.Errorf("task secret = %q, want it propagated from the options", task.Secret)
+		}
 	}
 	if byProtocol["http"] != 3 {
 		t.Errorf("http techniques = %d, want 3", byProtocol["http"])
@@ -118,19 +124,20 @@ func TestLoaderCreatesTasksFromCsv(t *testing.T) {
 	if byProtocol["socks5"] != 1 {
 		t.Errorf("socks5 techniques = %d, want 1", byProtocol["socks5"])
 	}
-	if internal.State.NumScheduledTasks != 4 {
-		t.Errorf("NumScheduledTasks = %d, want 4", internal.State.NumScheduledTasks)
+	if state.NumScheduledTasks != 4 {
+		t.Errorf("NumScheduledTasks = %d, want 4", state.NumScheduledTasks)
 	}
 }
 
 func TestLoaderMissingFile(t *testing.T) {
-	setupOptions(t, "http://echo.example/", filepath.Join(t.TempDir(), "out.log"))
 	const numWorkers = 3
+	opts := newOptions(t, "http://echo.example/", filepath.Join(t.TempDir(), "nope.csv"), filepath.Join(t.TempDir(), "out.log"), numWorkers)
+	state := model.NewState(1)
 	taskQueue := make(chan *model.Task, 8)
 
 	// A missing input file must still release the workers via nil sentinels
 	// rather than hanging or panicking.
-	go processer.Loader(filepath.Join(t.TempDir(), "nope.csv"), taskQueue, numWorkers)
+	go processer.Loader(taskQueue, opts, state)
 
 	sentinels := 0
 	for sentinels < numWorkers {
@@ -143,7 +150,7 @@ func TestLoaderMissingFile(t *testing.T) {
 func TestSaverWritesResults(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out.log")
-	setupOptions(t, "http://echo.example/", out)
+	state := model.NewState(1)
 
 	task := model.NewTask(0, "m", "http", "1.2.3.4", 8080, "http://e/", 1, nil)
 	resultQueue := make(chan *model.Result, 8)
@@ -151,7 +158,7 @@ func TestSaverWritesResults(t *testing.T) {
 	resultQueue <- &model.Result{Task: &task, Error: "connection refused"}
 	resultQueue <- nil // single worker finished
 
-	processer.Saver(resultQueue, 1)
+	processer.Saver(resultQueue, 1, out, state)
 
 	data, err := os.ReadFile(out)
 	if err != nil {
@@ -170,10 +177,10 @@ func TestSaverWritesResults(t *testing.T) {
 		t.Errorf("serialized host = %q, want 1.2.3.4", first.Task.ProxyHost)
 	}
 
-	if internal.State.NumSucceedTasks != 1 {
-		t.Errorf("NumSucceedTasks = %d, want 1", internal.State.NumSucceedTasks)
+	if state.NumSucceedTasks != 1 {
+		t.Errorf("NumSucceedTasks = %d, want 1", state.NumSucceedTasks)
 	}
-	if internal.State.NumFailedTasks != 1 {
-		t.Errorf("NumFailedTasks = %d, want 1", internal.State.NumFailedTasks)
+	if state.NumFailedTasks != 1 {
+		t.Errorf("NumFailedTasks = %d, want 1", state.NumFailedTasks)
 	}
 }

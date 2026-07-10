@@ -20,15 +20,18 @@ func md5hex(s string) string {
 }
 
 func TestHandleChallengeAndVerify(t *testing.T) {
-	answer := util.HandleChallenge("abc")
+	answer := util.HandleChallenge("abc", testSecret)
 	if want := md5hex("abc" + testSecret); answer != want {
 		t.Errorf("HandleChallenge = %q, want %q", answer, want)
 	}
-	if !util.VerifyChallenge("abc", answer) {
+	if !util.VerifyChallenge("abc", answer, testSecret) {
 		t.Error("VerifyChallenge should accept the correct answer")
 	}
-	if util.VerifyChallenge("abc", "wrong-answer") {
+	if util.VerifyChallenge("abc", "wrong-answer", testSecret) {
 		t.Error("VerifyChallenge should reject a wrong answer")
+	}
+	if util.VerifyChallenge("abc", answer, "different-secret") {
+		t.Error("VerifyChallenge should reject when the secret differs")
 	}
 }
 
@@ -60,17 +63,17 @@ func TestExtractChallengeFromInvalidUrl(t *testing.T) {
 
 func TestVerifyIntegrity(t *testing.T) {
 	challenge := "xyz"
-	good, _ := json.Marshal(map[string]string{"response": util.HandleChallenge(challenge)})
-	if !util.VerifyIntegrity(good, challenge) {
+	good, _ := json.Marshal(map[string]string{"response": util.HandleChallenge(challenge, testSecret)})
+	if !util.VerifyIntegrity(good, challenge, testSecret) {
 		t.Error("VerifyIntegrity should accept a correctly signed body")
 	}
 
 	bad, _ := json.Marshal(map[string]string{"response": "not-the-answer"})
-	if util.VerifyIntegrity(bad, challenge) {
+	if util.VerifyIntegrity(bad, challenge, testSecret) {
 		t.Error("VerifyIntegrity should reject a wrong answer")
 	}
 
-	if util.VerifyIntegrity([]byte("this is not json"), challenge) {
+	if util.VerifyIntegrity([]byte("this is not json"), challenge, testSecret) {
 		t.Error("VerifyIntegrity should reject a non-JSON body")
 	}
 }
@@ -80,7 +83,7 @@ func TestVerifyIntegrity(t *testing.T) {
 func newEchoServer(tamper bool) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		challenge := r.URL.Query().Get("challenge")
-		response := util.HandleChallenge(challenge)
+		response := util.HandleChallenge(challenge, testSecret)
 		if tamper {
 			response = "tampered"
 		}
@@ -94,7 +97,7 @@ func TestSendVerificationHttpRequestSuccess(t *testing.T) {
 
 	result := &model.Result{}
 	target := util.BuildUrl(srv.URL, "task-1", "http", "127.0.0.1", 8080)
-	if err := util.SendVerificationHttpRequest(srv.Client(), target, result); err != nil {
+	if err := util.SendVerificationHttpRequest(srv.Client(), target, testSecret, result); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.RawProxyOriginRequest == "" || result.RawProxyOriginResponse == "" {
@@ -108,7 +111,7 @@ func TestSendVerificationHttpRequestIntegrityFailure(t *testing.T) {
 
 	result := &model.Result{}
 	target := util.BuildUrl(srv.URL, "task-2", "http", "127.0.0.1", 8080)
-	err := util.SendVerificationHttpRequest(srv.Client(), target, result)
+	err := util.SendVerificationHttpRequest(srv.Client(), target, testSecret, result)
 	if err == nil {
 		t.Fatal("expected an integrity verification error, got nil")
 	}
@@ -123,7 +126,7 @@ func TestSendVerificationHttpRequestConnectionError(t *testing.T) {
 	srv.Close() // close before sending so the dial fails
 
 	result := &model.Result{}
-	if err := util.SendVerificationHttpRequest(srv.Client(), target, result); err == nil {
+	if err := util.SendVerificationHttpRequest(srv.Client(), target, testSecret, result); err == nil {
 		t.Error("expected a connection error after the server was closed")
 	}
 }
