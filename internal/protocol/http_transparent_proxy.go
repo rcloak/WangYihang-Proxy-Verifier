@@ -3,7 +3,6 @@ package protocol
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
@@ -35,22 +34,10 @@ func HttpViaHttpTransparentProxy(task *model.Task) (result model.Result) {
 		return result
 	}
 
-	// Create an HTTP client that uses the tunnel connection
-	client := &http.Client{
-		Transport: &http.Transport{
-			Dial: func(network, addr string) (net.Conn, error) {
-				return conn, nil
-			},
-		},
-		Timeout: timeoutDuration,
-	}
-
-	// Send request
+	// Send the verification request directly over the established connection.
 	newUrl := util.BuildUrl(task.TargetUri, task.TaskId, task.ProxyProtocol, task.ProxyHost, task.ProxyPort)
-	err = util.SendVerificationHttpRequest(client, newUrl, &result)
-	if err != nil {
+	if err := util.SendVerificationHTTPRequestViaConn(conn, newUrl, timeoutDuration, &result); err != nil {
 		result.Error = err.Error()
-		return
 	}
 	return result
 }

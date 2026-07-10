@@ -1,14 +1,17 @@
 package util
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"github.com/WangYihang/Proxy-Verifier/internal"
 	"github.com/WangYihang/Proxy-Verifier/internal/config"
@@ -102,10 +105,67 @@ func SendVerificationHttpRequest(client *http.Client, url string, result *model.
 	// Verify integrity
 	challenge := ExtractChallengeFromUrl(url)
 	if !VerifyIntegrity(rawBody, challenge) {
-		result.Error = "integrity verification failed"
-		return err
+		return fmt.Errorf("integrity verification failed")
 	}
 
 	// No error
+	return nil
+}
+
+// SendVerificationHTTPRequestViaConn sends the verification request directly
+// over an already-established connection (an HTTP/HTTPS tunnel or a transparent
+// proxy connection) and verifies the integrity of the response.
+//
+// Unlike handing the connection to an http.Transport through a Dial closure that
+// always returns the same connection, this writes the request and reads the
+// response on the connection exactly once. That avoids the transport re-dialing
+// and reusing a single-use connection, which could otherwise turn a working
+// proxy into a false negative.
+func SendVerificationHTTPRequestViaConn(conn net.Conn, url string, timeout time.Duration, result *model.Result) error {
+	defer conn.Close()
+
+	// Create request
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	// Record the raw request in result
+	rawRequest, err := httputil.DumpRequest(request, true)
+	if err != nil {
+		return err
+	}
+	result.RawProxyOriginRequest = string(rawRequest)
+
+	// Bound the whole exchange by the timeout
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	defer conn.SetDeadline(time.Time{})
+
+	// Write the request onto the established connection
+	if err := request.Write(conn); err != nil {
+		return err
+	}
+
+	// Read the response back from the same connection
+	response, err := http.ReadResponse(bufio.NewReader(conn), request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	// Record the raw response in result
+	rawResponse, err := httputil.DumpResponse(response, true)
+	if err != nil {
+		return err
+	}
+	result.RawProxyOriginResponse = string(rawResponse)
+	rawBody := rawResponse[bytes.Index(rawResponse, []byte("\r\n\r\n"))+4:]
+
+	// Verify integrity
+	challenge := ExtractChallengeFromUrl(url)
+	if !VerifyIntegrity(rawBody, challenge) {
+		return fmt.Errorf("integrity verification failed")
+	}
+
 	return nil
 }

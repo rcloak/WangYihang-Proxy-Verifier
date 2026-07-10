@@ -3,7 +3,6 @@ package processer
 import (
 	"time"
 
-	"github.com/WangYihang/Proxy-Verifier/internal"
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
 )
 
@@ -17,8 +16,6 @@ func Worker(taskQueue chan *model.Task, resultQueue chan *model.Result) {
 		// Update start time
 		startTime := time.Now()
 		task.StartTime = startTime.UnixMilli()
-		// Update max index
-		internal.State.CurrentIndex = task.Index
 		// Process Task
 		result := task.ProcessFunc(task)
 		// Update end time

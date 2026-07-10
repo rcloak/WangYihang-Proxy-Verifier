@@ -49,7 +49,7 @@ func ParseRecordXmap(record []string) (string, string, uint16) {
 func DetectFileFormat(inputFilepath string) (string, error) {
 	file, err := os.OpenFile(inputFilepath, os.O_RDONLY, 0)
 	if err != nil {
-		logger.Error(err)
+		return "", err
 	}
 	defer file.Close()
 

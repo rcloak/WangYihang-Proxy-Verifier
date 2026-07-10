@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"net/http"
 	"strings"
 	"time"
 
@@ -13,7 +12,10 @@ import (
 )
 
 func EstablishHttpsTunnel(proxyHost string, proxyPort uint16, targetUri string, timeoutDuration time.Duration, result *model.Result) (net.Conn, error) {
-	// Establish tunnel
+	// Establish tunnel.
+	// InsecureSkipVerify is intentional: we are probing arbitrary third-party
+	// proxies whose TLS certificates are routinely self-signed or mismatched,
+	// and connectivity (not certificate trust) is what we are verifying here.
 	conn, err := tls.Dial(
 		"tcp",
 		fmt.Sprintf("%s:%d", proxyHost, proxyPort),
@@ -29,6 +31,7 @@ func EstablishHttpsTunnel(proxyHost string, proxyPort uint16, targetUri string, 
 	host, port, err := util.ExtractHostPortFromUri(targetUri)
 	if err != nil {
 		result.Error = err.Error()
+		conn.Close()
 		return nil, err
 	}
 
@@ -39,6 +42,7 @@ func EstablishHttpsTunnel(proxyHost string, proxyPort uint16, targetUri string, 
 		n, err := conn.Write(remainingBytes)
 		_ = conn.SetDeadline(time.Time{})
 		if err != nil {
+			conn.Close()
 			return nil, err
 		}
 		remainingBytes = remainingBytes[n:]
@@ -51,6 +55,7 @@ func EstablishHttpsTunnel(proxyHost string, proxyPort uint16, targetUri string, 
 	n, err := conn.Read(buffer)
 	_ = conn.SetDeadline(time.Time{})
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
@@ -66,6 +71,7 @@ func EstablishHttpsTunnel(proxyHost string, proxyPort uint16, targetUri string, 
 	if strings.Contains(result.RawClientProxyResponse, " 200 ") {
 		return conn, nil
 	} else {
+		conn.Close()
 		return nil, fmt.Errorf("invalid Tunnel Server Response: %s", firstLine)
 	}
 }
@@ -81,22 +87,10 @@ func HttpViaHttpsTunnel(task *model.Task) (result model.Result) {
 		return result
 	}
 
-	// Create an HTTP client that uses the tunnel connection
-	client := &http.Client{
-		Transport: &http.Transport{
-			Dial: func(network, addr string) (net.Conn, error) {
-				return conn, nil
-			},
-		},
-		Timeout: timeoutDuration,
-	}
-
-	// Send request
+	// Send the verification request directly over the established tunnel.
 	newUrl := util.BuildUrl(task.TargetUri, task.TaskId, task.ProxyProtocol, task.ProxyHost, task.ProxyPort)
-	err = util.SendVerificationHttpRequest(client, newUrl, &result)
-	if err != nil {
+	if err := util.SendVerificationHTTPRequestViaConn(conn, newUrl, timeoutDuration, &result); err != nil {
 		result.Error = err.Error()
-		return
 	}
 	return result
 }

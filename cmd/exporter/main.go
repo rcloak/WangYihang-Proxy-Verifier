@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -29,8 +30,7 @@ func transformLine(oldline string) (newline string, err error) {
 	proxyPort := result.Task.ProxyPort
 
 	if result.Error != "" {
-		// Check if the proxy and backend are the same
-		return "", fmt.Errorf(result.Error)
+		return "", errors.New(result.Error)
 	}
 
 	return fmt.Sprintf("%s://%s:%d/\n", protocol, proxyHost, proxyPort), nil

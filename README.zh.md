@@ -18,7 +18,7 @@
 ```bash
 go install github.com/WangYihang/Proxy-Verifier/cmd/downloader@latest
 go install github.com/WangYihang/Proxy-Verifier/cmd/exporter@latest
-go install github.com/WangYihang/Proxy-Verifier/cmd/server@latest
+go install github.com/WangYihang/Proxy-Verifier/cmd/echo-server/http@latest
 go install github.com/WangYihang/Proxy-Verifier/cmd/verifier@latest
 ```
 

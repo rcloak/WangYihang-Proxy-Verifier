@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/WangYihang/Proxy-Verifier/internal/model"
@@ -12,7 +11,10 @@ import (
 )
 
 func EstablishHttpsTransparentProxy(proxyHost string, proxyPort uint16, timeoutDuration time.Duration) (net.Conn, error) {
-	// Establish tunnel
+	// Establish tunnel.
+	// InsecureSkipVerify is intentional: we are probing arbitrary third-party
+	// proxies whose TLS certificates are routinely self-signed or mismatched,
+	// and connectivity (not certificate trust) is what we are verifying here.
 	conn, err := tls.Dial(
 		"tcp",
 		fmt.Sprintf("%s:%d", proxyHost, proxyPort),
@@ -38,22 +40,10 @@ func HttpViaHttpsTransparentProxy(task *model.Task) (result model.Result) {
 		return result
 	}
 
-	// Create an HTTP client that uses the tunnel connection
-	client := &http.Client{
-		Transport: &http.Transport{
-			Dial: func(network, addr string) (net.Conn, error) {
-				return conn, nil
-			},
-		},
-		Timeout: timeoutDuration,
-	}
-
-	// Send request
+	// Send the verification request directly over the established connection.
 	newUrl := util.BuildUrl(task.TargetUri, task.TaskId, task.ProxyProtocol, task.ProxyHost, task.ProxyPort)
-	err = util.SendVerificationHttpRequest(client, newUrl, &result)
-	if err != nil {
+	if err := util.SendVerificationHTTPRequestViaConn(conn, newUrl, timeoutDuration, &result); err != nil {
 		result.Error = err.Error()
-		return
 	}
 	return result
 }

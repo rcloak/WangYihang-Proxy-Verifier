@@ -41,7 +41,9 @@ func Loader(inputFilepath string, taskQueue chan *model.Task, numWorkers int) {
 	reader, err := os.OpenFile(inputFilepath, os.O_RDONLY, 0)
 	if err != nil {
 		logger.Error(err)
+		return
 	}
+	defer reader.Close()
 	r := csv.NewReader(reader)
 
 	// Read records
@@ -53,17 +55,11 @@ func Loader(inputFilepath string, taskQueue chan *model.Task, numWorkers int) {
 
 		// Parse record
 		proxyProtocol, proxyHost, proxyPort := ParseRecordFunc(record)
-		if err != nil {
-			logger.Error(err)
-			continue
-		}
 
 		targetProtocol := internal.Options.TargetUrlObject.Scheme
 		proxyProtocol2SubProxyProtocol2Handler := protocol.TargetProtocl2ProxyProtocol2SubProxyProtocol2Handler[targetProtocol]
 		for _, handler := range proxyProtocol2SubProxyProtocol2Handler[proxyProtocol] {
 			task := model.NewTask(index, internal.Options.MeasurementId, proxyProtocol, proxyHost, proxyPort, internal.Options.TargetUrl, internal.Options.Timeout, handler)
-			// techniqueName := fmt.Sprintf("%s-via-%s-%s", targetProtocol, proxyProtocol, subProxyProtocol)
-			// task := model.NewTask(index, internal.Options.MeasurementId, proxyProtocol, proxyHost, proxyPort, internal.Options.TargetUrl, internal.Options.Timeout, techniqueName, handler)
 			ScheduleTask(&task, taskQueue)
 		}
 	}

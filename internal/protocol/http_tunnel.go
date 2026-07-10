@@ -3,7 +3,6 @@ package protocol
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"strings"
 	"time"
 
@@ -26,6 +25,7 @@ func EstablishHttpTunnel(proxyHost string, proxyPort uint16, targetUri string, t
 	host, port, err := util.ExtractHostPortFromUri(targetUri)
 	if err != nil {
 		result.Error = err.Error()
+		conn.Close()
 		return nil, err
 	}
 
@@ -36,6 +36,7 @@ func EstablishHttpTunnel(proxyHost string, proxyPort uint16, targetUri string, t
 		n, err := conn.Write(remainingBytes)
 		_ = conn.SetDeadline(time.Time{})
 		if err != nil {
+			conn.Close()
 			return nil, err
 		}
 		remainingBytes = remainingBytes[n:]
@@ -48,6 +49,7 @@ func EstablishHttpTunnel(proxyHost string, proxyPort uint16, targetUri string, t
 	n, err := conn.Read(buffer)
 	_ = conn.SetDeadline(time.Time{})
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
@@ -63,6 +65,7 @@ func EstablishHttpTunnel(proxyHost string, proxyPort uint16, targetUri string, t
 	if strings.Contains(result.RawClientProxyResponse, " 200 ") {
 		return conn, nil
 	} else {
+		conn.Close()
 		return nil, fmt.Errorf("invalid Tunnel Server Response: %s", firstLine)
 	}
 }
@@ -78,22 +81,10 @@ func HttpViaHttpTunnel(task *model.Task) (result model.Result) {
 		return result
 	}
 
-	// Create an HTTP client that uses the tunnel connection
-	client := &http.Client{
-		Transport: &http.Transport{
-			Dial: func(network, addr string) (net.Conn, error) {
-				return conn, nil
-			},
-		},
-		Timeout: timeoutDuration,
-	}
-
-	// Send request
+	// Send the verification request directly over the established tunnel.
 	newUrl := util.BuildUrl(task.TargetUri, task.TaskId, task.ProxyProtocol, task.ProxyHost, task.ProxyPort)
-	err = util.SendVerificationHttpRequest(client, newUrl, &result)
-	if err != nil {
+	if err := util.SendVerificationHTTPRequestViaConn(conn, newUrl, timeoutDuration, &result); err != nil {
 		result.Error = err.Error()
-		return
 	}
 	return result
 }
