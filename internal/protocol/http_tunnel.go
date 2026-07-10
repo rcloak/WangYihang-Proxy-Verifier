@@ -43,19 +43,14 @@ func EstablishHttpTunnel(proxyHost string, proxyPort uint16, targetUri string, t
 	}
 	result.RawClientProxyRequest = rawClientProxyRequest
 
-	// Read the first line of response
-	buffer := make([]byte, 1024)
-	_ = conn.SetDeadline(time.Now().Add(timeoutDuration))
-	n, err := conn.Read(buffer)
-	_ = conn.SetDeadline(time.Time{})
+	// Read the CONNECT response without consuming any bytes the target server
+	// may send afterwards (e.g. an SMTP greeting).
+	firstLine, err := readConnectResponse(conn, timeoutDuration)
+	result.RawClientProxyResponse = firstLine
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-
-	// Check the first line of response
-	firstLine := string(buffer[:n])
-	result.RawClientProxyResponse = firstLine
 
 	// HTTP/1.0 200 Connection established
 	// HTTP/1.1 200 Connection established

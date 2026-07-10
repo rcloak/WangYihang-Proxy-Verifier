@@ -217,82 +217,96 @@ func startTransparentProxy(t *testing.T, tlsWrap bool) (string, uint16) {
 
 // startSocks5Proxy is a minimal no-auth SOCKS5 CONNECT proxy.
 func startSocks5Proxy(t *testing.T) (string, uint16) {
+	return startSocks5ProxyWithDelay(t, 0)
+}
+
+// startSocks5ProxyWithDelay is like startSocks5Proxy but waits relayDelay before
+// relaying the target's data back to the client. This models the proxy->target
+// round-trip latency that, in the real world, separates the SOCKS reply from a
+// server-speaks-first greeting (e.g. SMTP) -- a separation h12.io/socks relies
+// on, since it reads the CONNECT reply with a single fixed-size read.
+func startSocks5ProxyWithDelay(t *testing.T, relayDelay time.Duration) (string, uint16) {
 	t.Helper()
 	ln := newListener(t, false)
-	go acceptLoop(ln, handleSocks5)
+	go acceptLoop(ln, socks5Handler(relayDelay))
 	return hostPort(t, ln.Addr().String())
 }
 
-func handleSocks5(conn net.Conn) {
-	defer conn.Close()
-	br := bufio.NewReader(conn)
+func socks5Handler(relayDelay time.Duration) func(net.Conn) {
+	return func(conn net.Conn) {
+		defer conn.Close()
+		br := bufio.NewReader(conn)
 
-	// Greeting: VER, NMETHODS, METHODS...
-	ver, err := br.ReadByte()
-	if err != nil || ver != 0x05 {
-		return
-	}
-	nMethods, err := br.ReadByte()
-	if err != nil {
-		return
-	}
-	if _, err := io.CopyN(io.Discard, br, int64(nMethods)); err != nil {
-		return
-	}
-	// Select "no authentication".
-	if _, err := conn.Write([]byte{0x05, 0x00}); err != nil {
-		return
-	}
-
-	// Request: VER, CMD, RSV, ATYP, DST.ADDR, DST.PORT
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(br, header); err != nil {
-		return
-	}
-	var host string
-	switch header[3] {
-	case 0x01: // IPv4
-		buf := make([]byte, 4)
-		if _, err := io.ReadFull(br, buf); err != nil {
+		// Greeting: VER, NMETHODS, METHODS...
+		ver, err := br.ReadByte()
+		if err != nil || ver != 0x05 {
 			return
 		}
-		host = net.IP(buf).String()
-	case 0x03: // domain
-		length, err := br.ReadByte()
+		nMethods, err := br.ReadByte()
 		if err != nil {
 			return
 		}
-		buf := make([]byte, length)
-		if _, err := io.ReadFull(br, buf); err != nil {
+		if _, err := io.CopyN(io.Discard, br, int64(nMethods)); err != nil {
 			return
 		}
-		host = string(buf)
-	case 0x04: // IPv6
-		buf := make([]byte, 16)
-		if _, err := io.ReadFull(br, buf); err != nil {
+		// Select "no authentication".
+		if _, err := conn.Write([]byte{0x05, 0x00}); err != nil {
 			return
 		}
-		host = net.IP(buf).String()
-	default:
-		return
-	}
-	portBuf := make([]byte, 2)
-	if _, err := io.ReadFull(br, portBuf); err != nil {
-		return
-	}
-	target := net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(portBuf))))
 
-	upstream, err := net.Dial("tcp", target)
-	if err != nil {
-		// Reply: general failure.
-		_, _ = conn.Write([]byte{0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
-		return
+		// Request: VER, CMD, RSV, ATYP, DST.ADDR, DST.PORT
+		header := make([]byte, 4)
+		if _, err := io.ReadFull(br, header); err != nil {
+			return
+		}
+		var host string
+		switch header[3] {
+		case 0x01: // IPv4
+			buf := make([]byte, 4)
+			if _, err := io.ReadFull(br, buf); err != nil {
+				return
+			}
+			host = net.IP(buf).String()
+		case 0x03: // domain
+			length, err := br.ReadByte()
+			if err != nil {
+				return
+			}
+			buf := make([]byte, length)
+			if _, err := io.ReadFull(br, buf); err != nil {
+				return
+			}
+			host = string(buf)
+		case 0x04: // IPv6
+			buf := make([]byte, 16)
+			if _, err := io.ReadFull(br, buf); err != nil {
+				return
+			}
+			host = net.IP(buf).String()
+		default:
+			return
+		}
+		portBuf := make([]byte, 2)
+		if _, err := io.ReadFull(br, portBuf); err != nil {
+			return
+		}
+		target := net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(portBuf))))
+
+		upstream, err := net.Dial("tcp", target)
+		if err != nil {
+			// Reply: general failure.
+			_, _ = conn.Write([]byte{0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+			return
+		}
+		defer upstream.Close()
+		// Reply: success, bound address 0.0.0.0:0.
+		if _, err := conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}); err != nil {
+			return
+		}
+		if relayDelay > 0 {
+			time.Sleep(relayDelay)
+		}
+		go func() { _, _ = io.Copy(upstream, br) }()
+		_, _ = io.Copy(conn, upstream)
 	}
-	defer upstream.Close()
-	// Reply: success, bound address 0.0.0.0:0.
-	if _, err := conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}); err != nil {
-		return
-	}
-	go func() { _, _ = io.Copy(upstream, br) }()
-	_, _ = io.Copy(conn, upstream)
 }

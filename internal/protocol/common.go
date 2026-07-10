@@ -25,4 +25,24 @@ var TargetProtocl2ProxyProtocol2SubProxyProtocol2Handler = map[string]map[string
 			"tunnel": HttpViaSocksTunnel,
 		},
 	},
+	// Access an SMTP Server via Proxies. Only tunneling proxies (HTTP CONNECT
+	// and SOCKS) can carry a raw SMTP session; plain and transparent HTTP
+	// proxies operate at the HTTP application layer and do not apply.
+	"smtp": {
+		"http": {
+			"tunnel": SmtpViaHttpTunnel,
+		},
+		"https": {
+			"tunnel": SmtpViaHttpsTunnel,
+		},
+		"socks4": {
+			"tunnel": SmtpViaSocksTunnel,
+		},
+		"socks4a": {
+			"tunnel": SmtpViaSocksTunnel,
+		},
+		"socks5": {
+			"tunnel": SmtpViaSocksTunnel,
+		},
+	},
 }

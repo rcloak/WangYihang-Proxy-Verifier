@@ -7,12 +7,18 @@ import (
 	"github.com/WangYihang/Proxy-Verifier/internal/protocol"
 )
 
+// taskFor builds a task wired with the integration secret for a given proxy.
+func taskFor(protocolName, host string, port uint16, targetURL string, handler func(*model.Task) model.Result) model.Task {
+	task := model.NewTask(0, "integration", protocolName, host, port, targetURL, 8, handler)
+	task.Secret = integrationSecret
+	return task
+}
+
 // runHandler drives one protocol handler against an in-process proxy + echo
 // server and asserts the verification succeeded end to end.
 func runHandler(t *testing.T, protocolName, host string, port uint16, targetURL string, handler func(*model.Task) model.Result) {
 	t.Helper()
-	task := model.NewTask(0, "integration", protocolName, host, port, targetURL, 8, handler)
-	task.Secret = integrationSecret
+	task := taskFor(protocolName, host, port, targetURL, handler)
 	result := handler(&task)
 	if result.Error != "" {
 		t.Fatalf("handler returned error: %s", result.Error)

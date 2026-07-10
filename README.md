@@ -156,6 +156,7 @@ Due to the proxy data sources of this project coming from other projects, it is 
 - [x] Support transparent HTTPS proxies
 - [x] Support HTTPS tunnels
 - [x] Allow the downloader to read proxy list download links through a configuration file
+- [x] Support verifying proxies against an SMTP server (`--url smtp://...`, via HTTP/HTTPS tunnels and SOCKS)
 
 ## Acknowledgement
 
